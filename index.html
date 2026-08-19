@@ -51,6 +51,8 @@
   }
 
   body {
+    min-height: 100dvh;
+    isolation: isolate;
     color: var(--fg);
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 300;
@@ -91,19 +93,36 @@
     max-width: calc(480px - 56px);
     margin: 0;
     padding: 0;
-    border: none;
-    background: none;
-    font-family: inherit;
     color: var(--fg);
-    cursor: pointer;
-    text-align: left;
   }
 
   .hex-value {
+    min-width: 0;
+    flex: 0 1 auto;
+    font-family: inherit;
     font-size: var(--t-lg);
     font-weight: 300;
     text-transform: uppercase;
+    border: none;
+    background: none;
+    color: inherit;
+    caret-color: currentColor;
+    -webkit-appearance: none;
+    appearance: none;
   }
+
+  .hex-value:focus { outline: none; }
+
+  .hex-copy {
+    flex: 0 0 auto;
+    border: none;
+    background: none;
+    font-family: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .hex-copy:active { opacity: 0.4; }
 
   /* ---------- Value rows ---------- */
 
@@ -282,10 +301,11 @@
 
   <div class="bg" id="bg"></div>
 
-  <button class="hex" id="hexBtn" type="button">
-    <span class="hex-value" id="hexValue"></span>
-    <span class="label">hex</span>
-  </button>
+  <div class="hex">
+    <input class="hex-value" id="hexValue" type="text" spellcheck="false"
+           autocapitalize="off" autocorrect="off" enterkeyhint="done" aria-label="hex value">
+    <button class="label hex-copy" id="hexBtn" type="button">hex</button>
+  </div>
 
   <div id="rows"></div>
 
@@ -324,6 +344,29 @@
   }
 
   const hex2 = v => v.toString(16).padStart(2, '0');
+
+  function parseHex(text) {
+    const m = String(text).trim().replace(/^#/, '');
+    const s = m.length === 3 ? m.split('').map(ch => ch + ch).join('') : m;
+    if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+    return [0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16));
+  }
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    const l = (mx + mn) / 2;
+    let h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      if (mx === r) h = ((g - b) / d) % 6;
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return [h, s * 100, l * 100];
+  }
 
   function rgbToHsb(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -469,7 +512,9 @@
     root.style.backgroundColor = c.hex;
     bg.style.backgroundColor = c.hex;
     themeColor.setAttribute('content', c.hex);
-    if (!hexValue.dataset.copying) hexValue.textContent = c.hex;
+    if (!hexValue.dataset.copying && document.activeElement !== hexValue) {
+      hexValue.value = c.hex;
+    }
     FORMATS.forEach(([, fn], i) => {
       const v = fn(c);
       const el = rowEls[i].querySelector('.value');
@@ -506,9 +551,10 @@
 
   function copy(btn, slot) {
     const text = btn.dataset.copy;
+    const set = v => { if ('value' in slot && slot.tagName === 'INPUT') slot.value = v; else slot.textContent = v; };
     const done = () => {
       slot.dataset.copying = '1';
-      slot.textContent = 'copied';
+      set('copied');
       setTimeout(() => { delete slot.dataset.copying; render(); }, 900);
     };
     if (navigator.clipboard && window.isSecureContext) {
@@ -520,6 +566,22 @@
 
   rowEls.forEach(b => b.addEventListener('click', () => copy(b, b.querySelector('.value'))));
   hexBtn.addEventListener('click', () => copy(hexBtn, hexValue));
+
+  // typing or pasting a hex drives the sliders
+  function commitHex() {
+    const rgb = parseHex(hexValue.value);
+    if (rgb) {
+      const [h, s, l] = rgbToHsl(...rgb);
+      state = { h: Math.round(h), s: Math.round(s), l: Math.round(l) };
+      syncs.h(); syncs.s(); syncs.l();
+    }
+    render();
+  }
+
+  hexValue.addEventListener('focus', () => hexValue.select());
+  hexValue.addEventListener('change', commitHex);
+  hexValue.addEventListener('blur', commitHex);
+  hexValue.addEventListener('keydown', e => { if (e.key === 'Enter') hexValue.blur(); });
 
   // ---------- strips ----------
 
