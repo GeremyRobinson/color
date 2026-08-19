@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>Color</title>
-<meta name="theme-color" id="themeColor" content="#3380cc">
+<meta name="theme-color" id="themeColor" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,7 +12,7 @@
 <style>
   :root {
     --ink: 255 255 255;                    /* difference blending requires white ink */
-    --color: #3380cc;
+    --color: #fff;
     --fg: rgb(var(--ink));
     --muted: rgb(var(--ink) / 0.55);
     --panel-bg: rgb(var(--ink) / 0.10);
@@ -21,6 +21,10 @@
     --panel-h: calc(var(--item-h) * 3 + 4px);   /* three rows plus the 2px border */
     --t-lg: 44px;
     --t-sm: 18px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root { --color: #000; }
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -334,7 +338,8 @@
   const inputs = {};
   const syncs = {};
   const RANGES = { h: [0, 360], s: [0, 100], l: [0, 100] };
-  let state = { h: 210, s: 60, l: 50 };
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let state = { h: 0, s: 0, l: prefersDark ? 0 : 100 };   // #000 or #fff on first visit
 
   const SECTIONS = [
     ['screen', [
