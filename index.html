@@ -11,12 +11,12 @@
 <meta name="apple-mobile-web-app-title" content="Color">
 <style>
   :root {
-    --ink: 255 255 255;                    /* difference blending requires white ink */
     --color: #fff;
-    --fg: rgb(var(--ink));
-    --muted: rgb(var(--ink) / 0.55);
-    --panel-bg: rgb(var(--ink) / 0.10);
-    --panel-border: rgb(var(--ink) / 0.25);
+    --fg: #000;                            /* all four are recomputed on every */
+    --muted: #737373;                      /* change: each is the inverse of   */
+    --panel-bg: #e6e6e6;                   /* the page colour, mixed back      */
+    --panel-border: #bfbfbf;               /* toward it by a fixed amount      */
+    --fill-bg: #cccccc;                    /* the filled part of a slider      */
     --item-h: 44px;
     --panel-h: calc(var(--item-h) * 3 + 4px);   /* three rows plus the 2px border */
     --t-lg: 44px;
@@ -28,16 +28,6 @@
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-  /* text and rules invert the colour behind them, so they stay legible
-     at both ends of the range instead of at one */
-  .hex,
-  .row,
-  .section-label,
-  .dots,
-  .panel {
-    mix-blend-mode: difference;
-  }
 
   html {
     background-color: var(--color);   /* covers the overscroll area only */
@@ -143,11 +133,7 @@
 
   .row:active { opacity: 0.4; }
 
-  /* the pager becomes its own compositing layer on iOS, and a layer with a
-     transparent backdrop gives blended children nothing to invert against.
-     Painting the page colour here puts a surface inside that group. */
   #rows {
-    background-color: var(--color);
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     align-items: start;
@@ -267,7 +253,7 @@
     left: 0;
     width: 0;
     box-sizing: border-box;
-    background: rgb(var(--ink) / 0.10);
+    background: var(--fill-bg);
     border-right: 1px solid var(--fg);
     pointer-events: none;
   }
@@ -511,6 +497,16 @@
     const c = derive();
     const root = document.documentElement;
     root.style.setProperty('--color', c.hex);
+
+    // difference against white ink returns the inverse of the backdrop; an
+    // alpha of it returns a mix of the two. Both are computed here instead.
+    const inv = c.rgb.map(v => 255 - v);
+    const toward = a => `rgb(${c.rgb.map((v, i) => Math.round(v + (inv[i] - v) * a)).join(' ')})`;
+    root.style.setProperty('--fg', toward(1));
+    root.style.setProperty('--muted', toward(0.55));
+    root.style.setProperty('--panel-bg', toward(0.10));
+    root.style.setProperty('--fill-bg', toward(0.22));
+    root.style.setProperty('--panel-border', toward(0.25));
     root.style.backgroundColor = c.hex;
     bg.style.backgroundColor = c.hex;
     themeColor.setAttribute('content', c.hex);
