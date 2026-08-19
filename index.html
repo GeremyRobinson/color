@@ -143,7 +143,11 @@
 
   .row:active { opacity: 0.4; }
 
+  /* the pager becomes its own compositing layer on iOS, and a layer with a
+     transparent backdrop gives blended children nothing to invert against.
+     Painting the page colour here puts a surface inside that group. */
   #rows {
+    background-color: var(--color);
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     align-items: start;
