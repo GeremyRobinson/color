@@ -34,8 +34,18 @@
     mix-blend-mode: difference;
   }
 
-  html, body {
-    background: var(--color);
+  html {
+    background-color: var(--color);   /* covers the overscroll area only */
+  }
+
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--color);
+  }
+
+  body {
     color: var(--fg);
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 300;
@@ -141,8 +151,6 @@
     width: calc(100% - 56px);
     max-width: calc(480px - 56px);
     background: var(--panel-bg);
-    -webkit-backdrop-filter: blur(5px);
-    backdrop-filter: blur(5px);
     border: 2px solid var(--panel-border);
     border-radius: 20px;
     overflow: hidden;
@@ -215,8 +223,10 @@
 </head>
 <body>
 
+  <div class="bg" id="bg"></div>
+
   <button class="hex" id="hexBtn" type="button">
-    <span class="hex-value" id="hexValue">#808080</span>
+    <span class="hex-value" id="hexValue"></span>
     <span class="label">hex</span>
   </button>
 
@@ -388,9 +398,10 @@
 
   function render() {
     const c = derive();
-    document.documentElement.style.setProperty('--color', c.hex);
+    bg.style.backgroundColor = c.hex;
+    document.documentElement.style.backgroundColor = c.hex;
     themeColor.setAttribute('content', c.hex);
-    hexValue.textContent = c.hex;
+    if (!hexValue.dataset.copying) hexValue.textContent = c.hex;
     FORMATS.forEach(([, fn], i) => {
       const v = fn(c);
       const el = rowEls[i].querySelector('.value');
@@ -427,11 +438,10 @@
 
   function copy(btn, slot) {
     const text = btn.dataset.copy;
-    const prev = slot.textContent;
     const done = () => {
       slot.dataset.copying = '1';
       slot.textContent = 'copied';
-      setTimeout(() => { delete slot.dataset.copying; slot.textContent = prev; }, 900);
+      setTimeout(() => { delete slot.dataset.copying; render(); }, 900);
     };
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).then(done).catch(() => { if (legacyCopy(text)) done(); });
