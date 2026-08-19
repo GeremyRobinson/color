@@ -34,6 +34,7 @@
   .hex,
   .row,
   .section-label,
+  .dots,
   .panel {
     mix-blend-mode: difference;
   }
@@ -130,6 +131,53 @@
     gap: 36px 40px;
   }
 
+  .dots { display: none; }
+
+  /* above the mobile width the wrappers vanish and the groups
+     become grid items again */
+  .page { display: contents; }
+
+  @media (max-width: 699px) {
+    #rows {
+      display: flex;
+      gap: 0 28px;
+      margin: 0 -28px;
+      padding: 0 28px;
+      scroll-padding: 0 28px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    #rows::-webkit-scrollbar { display: none; }
+
+    /* one full-width page per pair, the two groups stacked inside it */
+    .page {
+      display: block;
+      flex: 0 0 calc(100% - 56px);
+      scroll-snap-align: start;
+    }
+
+    .page .section + .section { margin-top: 36px; }
+
+    .dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .dot.on { background: var(--fg); }
+  }
+
   .section-label {
     display: block;
     padding-bottom: 6px;
@@ -139,11 +187,16 @@
   }
 
   .value {
+    flex: 0 1 auto;
+    min-width: 0;
     text-align: right;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  /* the label never gets squeezed by a long value */
+  .row .label { flex: 0 0 auto; }
 
   /* ---------- Fixed input panel ---------- */
 
@@ -235,6 +288,8 @@
   </button>
 
   <div id="rows"></div>
+
+  <div class="dots" id="dots"></div>
 
   <div class="panel">
     <div class="strip-row" id="rowH">
@@ -357,7 +412,7 @@
     ]],
     ['code', [
       ['css',   c => `--color: ${c.hex};`],
-      ['swift', c => `UIColor(red: ${r2(c.rgb[0] / 255)}, green: ${r2(c.rgb[1] / 255)}, blue: ${r2(c.rgb[2] / 255)}, alpha: 1)`]
+      ['swift', c => `Color(red: ${r2(c.rgb[0] / 255)}, green: ${r2(c.rgb[1] / 255)}, blue: ${r2(c.rgb[2] / 255)})`]
     ]]
   ];
 
@@ -365,7 +420,13 @@
 
   const rowsEl = document.getElementById('rows');
   const rowEls = [];
-  SECTIONS.forEach(([title, items]) => {
+  let page = null;
+  SECTIONS.forEach(([title, items], si) => {
+    if (si % 2 === 0) {
+      page = document.createElement('div');
+      page.className = 'page';
+      rowsEl.appendChild(page);
+    }
     const sec = document.createElement('section');
     sec.className = 'section';
     const h = document.createElement('span');
@@ -380,7 +441,7 @@
       sec.appendChild(b);
       rowEls.push(b);
     });
-    rowsEl.appendChild(sec);
+    page.appendChild(sec);
   });
 
   const hexBtn = document.getElementById('hexBtn');
@@ -403,8 +464,10 @@
 
   function render() {
     const c = derive();
+    const root = document.documentElement;
+    root.style.setProperty('--color', c.hex);
+    root.style.backgroundColor = c.hex;
     bg.style.backgroundColor = c.hex;
-    document.documentElement.style.backgroundColor = c.hex;
     themeColor.setAttribute('content', c.hex);
     if (!hexValue.dataset.copying) hexValue.textContent = c.hex;
     FORMATS.forEach(([, fn], i) => {
@@ -570,6 +633,35 @@
     const saved = JSON.parse(localStorage.getItem('color.state') || 'null');
     if (saved && typeof saved.h === 'number') state = saved;
   } catch (e) {}
+
+  // one dot per pair of groups; only used at the mobile width
+  (function pager() {
+    const dots = document.getElementById('dots');
+    const stops = [...rowsEl.querySelectorAll('.page')];
+    if (stops.length < 2) return;
+
+    const marks = stops.map((_, i) => {
+      const d = document.createElement('span');
+      d.className = 'dot' + (i ? '' : ' on');
+      dots.appendChild(d);
+      return d;
+    });
+
+    let raf = null;
+    rowsEl.addEventListener('scroll', () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const x = rowsEl.scrollLeft;
+        let best = 0, gap = Infinity;
+        stops.forEach((s, i) => {
+          const d = Math.abs(s.offsetLeft - x);
+          if (d < gap) { gap = d; best = i; }
+        });
+        marks.forEach((m, i) => m.classList.toggle('on', i === best));
+      });
+    });
+  })();
 
   render();
   requestAnimationFrame(() => { syncs.h(); syncs.s(); syncs.l(); });
