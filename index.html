@@ -493,10 +493,48 @@
       }, 90);
     });
 
-    // a tap that did not scroll jumps straight to that position
-    let downPos = 0;
-    scroller.addEventListener('pointerdown', () => { downPos = scroller.scrollTop; });
+    // Dragging sideways moves the value directly, at bar width = full range,
+    // so the fill tracks the finger. Vertical stays with the native scroller,
+    // which is where the momentum comes from.
+    let downPos = 0, startX = 0, startY = 0, startVal = 0, sliding = false, held = false;
+
+    scroller.addEventListener('pointerdown', e => {
+      downPos = scroller.scrollTop;
+      startX = e.clientX;
+      startY = e.clientY;
+      startVal = state[key];
+      sliding = false;
+      held = true;
+    });
+
+    scroller.addEventListener('pointermove', e => {
+      if (!held) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!sliding) {
+        if (Math.abs(dx) < 4 || Math.abs(dx) <= Math.abs(dy)) return;
+        sliding = true;
+        try { scroller.setPointerCapture(e.pointerId); } catch (err) {}
+        if (document.activeElement === input) input.blur();
+      }
+      const r = row.getBoundingClientRect();
+      state[key] = Math.round(clamp(startVal + dx / (r.width / (max - min))));
+      sync();
+      render();
+    });
+
+    const endDrag = e => {
+      if (!held) return;
+      held = false;
+      if (sliding) { try { scroller.releasePointerCapture(e.pointerId); } catch (err) {} }
+    };
+
+    scroller.addEventListener('pointerup', endDrag);
+    scroller.addEventListener('pointercancel', endDrag);
+
+    // a tap that neither scrolled nor slid jumps straight to that position
     scroller.addEventListener('click', e => {
+      if (sliding) { sliding = false; return; }
       if (Math.abs(scroller.scrollTop - downPos) > 2) return;
       const r = row.getBoundingClientRect();
       const t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
