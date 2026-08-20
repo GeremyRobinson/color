@@ -18,7 +18,7 @@
     --panel-border: #bfbfbf;               /* toward it by a fixed amount      */
     --fill-bg: #cccccc;                    /* the filled part of a slider      */
     --item-h: 44px;
-    --panel-h: calc(var(--item-h) * 3 + 4px);   /* three rows plus the 2px border */
+    --panel-h: calc(var(--item-h) * 4 + 5px);   /* four rows, the 2px border, the divider */
     --t-lg: 44px;
     --t-sm: 18px;
   }
@@ -221,6 +221,40 @@
     overflow: hidden;
   }
 
+  .modes {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: var(--item-h);
+    padding: 0 16px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .mode {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: var(--t-sm);
+    font-weight: 300;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .mode.on { color: var(--fg); font-weight: 400; }
+  .mode[hidden] { display: none; }
+
+  /* pushed right, so invert sits beyond it when it is showing */
+  .mode.swap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    color: var(--fg);
+  }
+
+  .mode.swap svg { display: block; }
+  .mode.swap:active { opacity: 0.4; }
+
   .strip-row {
     position: relative;
     height: var(--item-h);
@@ -300,6 +334,19 @@
   <div class="dots" id="dots"></div>
 
   <div class="panel">
+    <div class="modes">
+      <button class="mode" id="modeBg" type="button">background</button>
+      <button class="mode" id="modeText" type="button">text</button>
+      <button class="mode swap" id="modeSwap" type="button" aria-label="Swap background and text">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true">
+          <path d="M14.5 4.5 H1.5 M4.5 2 L1.5 4.5 L4.5 7"/>
+          <path d="M1.5 11.5 H14.5 M11.5 14 L14.5 11.5 L11.5 9"/>
+        </svg>
+      </button>
+      <button class="mode invert" id="modeInvert" type="button">invert</button>
+    </div>
+
     <div class="strip-row" id="rowH">
       <div class="fill" id="fillH"></div>
       <div class="scroller" id="scrollH"><div class="ghost"></div></div>
@@ -425,7 +472,34 @@
   const syncs = {};
   const RANGES = { h: [0, 360], s: [0, 100], l: [0, 100] };
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  let state = { h: 0, s: 0, l: prefersDark ? 0 : 100 };   // #000 or #fff on first visit
+  let S = {
+    bg:   { h: 0, s: 0, l: prefersDark ? 0 : 100 },   // #000 or #fff on first visit
+    text: { h: 0, s: 0, l: prefersDark ? 100 : 0 },
+    target: 'bg',                                    // which colour the sliders edit
+    auto: true                                       // text is the inverse of the background
+  };
+
+  function invHSL(c) {
+    const inv = hslToRgb(c.h, c.s, c.l).map(v => 255 - v);
+    const [h, s, l] = rgbToHsl(...inv);
+    return { h: Math.round(h), s: Math.round(s), l: Math.round(l) };
+  }
+
+  const textHSL = () => (S.auto ? invHSL(S.bg) : S.text);
+  const active = () => (S.target === 'bg' ? S.bg : textHSL());
+
+  // editing while on text drops out of invert, keeping the colour you were on
+  function setActive(key, v) {
+    if (S.target === 'bg') { S.bg[key] = v; return; }
+    if (S.auto) { S.text = textHSL(); S.auto = false; }
+    S.text[key] = v;
+  }
+
+  function setActiveHSL(o) {
+    if (S.target === 'bg') { S.bg = o; return; }
+    S.auto = false;
+    S.text = o;
+  }
 
   const SECTIONS = [
     ['screen', [
@@ -478,13 +552,13 @@
   const hexBtn = document.getElementById('hexBtn');
   const hexValue = document.getElementById('hexValue');
 
-  function derive() {
-    const rgb = hslToRgb(state.h, state.s, state.l);
+  function derive(hsl) {
+    const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
     const hex = '#' + rgb.map(hex2).join('');
     const lab = rgbToLab(...rgb);
     const ok = rgbToOklab(...rgb);
     return {
-      ...state, rgb, hex,
+      ...hsl, rgb, hex,
       hsb: rgbToHsb(...rgb),
       cmyk: rgbToCmyk(...rgb),
       lab,
@@ -494,22 +568,30 @@
   }
 
   function render() {
-    const c = derive();
     const root = document.documentElement;
-    root.style.setProperty('--color', c.hex);
+    const bgC = derive(S.bg);
+    const txC = derive(textHSL());
 
-    // difference against white ink returns the inverse of the backdrop; an
-    // alpha of it returns a mix of the two. Both are computed here instead.
-    const inv = c.rgb.map(v => 255 - v);
-    const toward = a => `rgb(${c.rgb.map((v, i) => Math.round(v + (inv[i] - v) * a)).join(' ')})`;
+    // every token is a step from the background toward the text colour, so
+    // one control drives the type, the rules, the borders and the fills
+    const toward = a => `rgb(${bgC.rgb.map((v, i) => Math.round(v + (txC.rgb[i] - v) * a)).join(' ')})`;
+    root.style.setProperty('--color', bgC.hex);
     root.style.setProperty('--fg', toward(1));
     root.style.setProperty('--muted', toward(0.55));
     root.style.setProperty('--panel-bg', toward(0.10));
     root.style.setProperty('--fill-bg', toward(0.22));
     root.style.setProperty('--panel-border', toward(0.25));
-    root.style.backgroundColor = c.hex;
-    bg.style.backgroundColor = c.hex;
-    themeColor.setAttribute('content', c.hex);
+    root.style.backgroundColor = bgC.hex;
+    bg.style.backgroundColor = bgC.hex;
+    themeColor.setAttribute('content', bgC.hex);
+
+    modeBg.classList.toggle('on', S.target === 'bg');
+    modeText.classList.toggle('on', S.target === 'text');
+    modeInvert.hidden = S.target !== 'text';
+    modeInvert.classList.toggle('on', S.auto);
+
+    // the readout follows whichever colour is selected
+    const c = S.target === 'bg' ? bgC : txC;
     if (!hexValue.dataset.copying && document.activeElement !== hexValue) {
       hexValue.value = c.hex;
     }
@@ -520,16 +602,17 @@
       rowEls[i].dataset.copy = v;
     });
     hexBtn.dataset.copy = c.hex;
+    const a = active();
     for (const k of ['h', 's', 'l']) {
       const el = inputs[k];
-      if (el && document.activeElement !== el) el.value = r1(state[k]);
+      if (el && document.activeElement !== el) el.value = r1(a[k]);
       const f = fills[k];
       if (f) {
         const [lo, hi] = RANGES[k];
-        f.style.width = ((state[k] - lo) / (hi - lo) * 100) + '%';
+        f.style.width = ((a[k] - lo) / (hi - lo) * 100) + '%';
       }
     }
-    try { localStorage.setItem('color.state', JSON.stringify(state)); } catch (e) {}
+    try { localStorage.setItem('color.state', JSON.stringify(S)); } catch (e) {}
   }
 
   // ---------- copy ----------
@@ -570,8 +653,8 @@
     const rgb = parseHex(hexValue.value);
     if (rgb) {
       const [h, s, l] = rgbToHsl(...rgb);
-      state = { h: Math.round(h), s: Math.round(s), l: Math.round(l) };
-      syncs.h(); syncs.s(); syncs.l();
+      setActiveHSL({ h: Math.round(h), s: Math.round(s), l: Math.round(l) });
+      syncAll();
     }
     render();
   }
@@ -600,7 +683,7 @@
     // content is one row taller than the row, so scrollTop spans the range
     ghost.style.height = `calc(100% + ${(max - min) * px}px)`;
 
-    const sync = () => { scroller.scrollTop = (state[key] - min) * px; };
+    const sync = () => { scroller.scrollTop = (active()[key] - min) * px; };
     syncs[key] = sync;
 
     let raf = null, settle = null;
@@ -608,7 +691,7 @@
       if (!raf) {
         raf = requestAnimationFrame(() => {
           raf = null;
-          state[key] = clamp(min + scroller.scrollTop / px);
+          setActive(key, clamp(min + scroller.scrollTop / px));
           render();
         });
       }
@@ -630,7 +713,7 @@
       downPos = scroller.scrollTop;
       startX = e.clientX;
       startY = e.clientY;
-      startVal = state[key];
+      startVal = active()[key];
       sliding = false;
       held = true;
     });
@@ -646,7 +729,7 @@
         if (document.activeElement === input) input.blur();
       }
       const r = row.getBoundingClientRect();
-      state[key] = Math.round(clamp(startVal + dx / (r.width / (max - min))));
+      setActive(key, Math.round(clamp(startVal + dx / (r.width / (max - min)))));
       sync();
       render();
     });
@@ -666,14 +749,14 @@
       if (Math.abs(scroller.scrollTop - downPos) > 2) return;
       const r = row.getBoundingClientRect();
       const t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      state[key] = Math.round(min + t * (max - min));
+      setActive(key, Math.round(min + t * (max - min)));
       sync();
       render();
     });
 
     const commit = () => {
       const n = parseFloat(input.value);
-      if (!isNaN(n)) { state[key] = Math.round(clamp(n)); sync(); }
+      if (!isNaN(n)) { setActive(key, Math.round(clamp(n))); sync(); }
       render();
     };
 
@@ -691,7 +774,7 @@
 
   try {
     const saved = JSON.parse(localStorage.getItem('color.state') || 'null');
-    if (saved && typeof saved.h === 'number') state = saved;
+    if (saved && saved.bg && typeof saved.bg.h === 'number') S = saved;
   } catch (e) {}
 
   // one dot per pair of groups; only used at the mobile width
@@ -723,8 +806,22 @@
     });
   })();
 
+  function syncAll() { syncs.h(); syncs.s(); syncs.l(); }
+
+  modeBg.addEventListener('click', () => { S.target = 'bg'; syncAll(); render(); });
+  modeText.addEventListener('click', () => { S.target = 'text'; syncAll(); render(); });
+  modeInvert.addEventListener('click', () => { S.auto = true; syncAll(); render(); });
+
+  modeSwap.addEventListener('click', () => {
+    const t = textHSL();
+    S.text = S.bg;
+    S.bg = t;
+    syncAll();
+    render();
+  });
+
   render();
-  requestAnimationFrame(() => { syncs.h(); syncs.s(); syncs.l(); });
+  requestAnimationFrame(syncAll);
 </script>
 
 </body>
